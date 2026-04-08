@@ -5,6 +5,7 @@ import com.amartha.loan.api.dto.response.InvestmentResponse;
 import com.amartha.loan.domain.model.LoanInvestment;
 import com.amartha.loan.domain.service.LoanService;
 import io.quarkus.security.Authenticated;
+import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -15,7 +16,7 @@ import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import java.util.List;
 
-@Path("/api/v1/loans/{id}/investments")
+@Path("/api/v1/investments")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Investments", description = "Loan investment endpoints")
@@ -27,23 +28,25 @@ public class LoanInvestmentResource {
     @POST
     @RolesAllowed({"investor", "admin"})
     @Operation(summary = "Add investment to loan")
-    public Response addInvestment(
-            @PathParam("id") Long loanId,
-            @Valid AddInvestmentRequest request) {
-        loanService.addInvestment(
-                loanId,
+    public Uni<InvestmentResponse> addInvestment(@Valid AddInvestmentRequest request) {
+        return loanService.addInvestmentReactive(
+                request.loanId,
                 request.investorId,
-                request.amount);
-        return Response.status(Response.Status.CREATED).build();
+                request.amount)
+                .map(this::toInvestmentResponse);
     }
 
     @GET
+    @Path("/{loanId}")
     @Authenticated
     @Operation(summary = "List investments for loan")
-    public List<InvestmentResponse> listInvestments(@PathParam("id") Long loanId) {
-        return loanService.getInvestments(loanId).stream()
-                .map(this::toInvestmentResponse)
-                .toList();
+    public Uni<List<InvestmentResponse>> listInvestments(@PathParam("loanId") Long loanId) {
+        return loanService.getInvestmentsReactive(loanId)
+                .map(investments ->
+                    investments.stream()
+                            .map(this::toInvestmentResponse)
+                            .toList()
+                );
     }
 
     private InvestmentResponse toInvestmentResponse(LoanInvestment investment) {

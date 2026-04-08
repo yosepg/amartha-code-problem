@@ -7,6 +7,7 @@ A robust, event-driven microservice for managing peer-to-peer loan lifecycle man
 ## 📋 System Overview
 
 The Loan Service enables:
+
 - **Borrowers** to request microloans for various purposes
 - **Staff** to validate and approve loans with field evidence
 - **Investors** to fund approved loans in tranches
@@ -68,6 +69,7 @@ The Loan Service enables:
 ## 👥 User Flows
 
 ### Staff (Loan Approver)
+
 1. Receives loan request in `PROPOSED` state
 2. Conducts field validation (photo proof)
 3. Calls `PUT /api/v1/loans/{id}/approve` with approval details
@@ -75,6 +77,7 @@ The Loan Service enables:
 5. Loan transitions to `APPROVED`, ready for investor funding
 
 ### Investor (Lender)
+
 1. Views approved loans via `GET /api/v1/loans?status=APPROVED`
 2. Checks remaining funding gap via `remainingAmount` field
 3. Calls `POST /api/v1/investments` to fund a tranche
@@ -82,6 +85,7 @@ The Loan Service enables:
 5. When loan fully funded → receives notification email (CDI event)
 
 ### Field Officer (Disbursement)
+
 1. Verifies loan is `INVESTED` (fully funded)
 2. Obtains signed agreement from borrower
 3. Calls `PUT /api/v1/loans/{id}/disburse` with signed document path
@@ -94,6 +98,7 @@ The Loan Service enables:
 ### Core Entities
 
 **Loan** (aggregate root)
+
 ```
 ├─ id: UUID
 ├─ borrowerId: String
@@ -107,6 +112,7 @@ The Loan Service enables:
 ```
 
 **LoanApproval**
+
 ```
 ├─ loanId: UUID (FK → Loan)
 ├─ fieldValidatorEmployeeId: String
@@ -115,6 +121,7 @@ The Loan Service enables:
 ```
 
 **LoanInvestment**
+
 ```
 ├─ id: UUID
 ├─ loanId: UUID (FK → Loan)
@@ -125,6 +132,7 @@ The Loan Service enables:
 ```
 
 **LoanDisbursement**
+
 ```
 ├─ loanId: UUID (FK → Loan)
 ├─ fieldOfficerEmployeeId: String
@@ -139,6 +147,7 @@ The Loan Service enables:
 ### Loan Management
 
 #### Create Loan
+
 ```
 POST /api/v1/loans
 Content-Type: application/json
@@ -168,6 +177,7 @@ Response (201 Created):
 ```
 
 #### Get Loan
+
 ```
 GET /api/v1/loans/{id}
 Authorization: Bearer <token>
@@ -188,6 +198,7 @@ Response (200):
 ```
 
 #### List Loans
+
 ```
 GET /api/v1/loans?status=APPROVED
 Authorization: Bearer <token>
@@ -196,6 +207,7 @@ Response (200): Array of LoanResponse
 ```
 
 #### Approve Loan
+
 ```
 PUT /api/v1/loans/{id}/approve
 Content-Type: application/json
@@ -218,6 +230,7 @@ Response (200):
 ```
 
 #### Download Agreement Letter
+
 ```
 GET /api/v1/loans/{id}/agreement-letter
 Accept: application/pdf
@@ -230,6 +243,7 @@ Content-Disposition: attachment; filename="uuid_agreement.pdf"
 ```
 
 #### Disburse Loan
+
 ```
 PUT /api/v1/loans/{id}/disburse
 Content-Type: application/json
@@ -257,6 +271,7 @@ Response (200):
 ### Investment Management
 
 #### Add Investment
+
 ```
 POST /api/v1/investments
 Content-Type: application/json
@@ -284,6 +299,7 @@ Note: When investment reaches principal, loan auto-transitions to INVESTED
 ```
 
 #### List Investments for Loan
+
 ```
 GET /api/v1/investments/{loanId}
 Authorization: Bearer <token>
@@ -299,12 +315,14 @@ Response (200): Array of investments
 **Authorization:** Role-based access control (`@RolesAllowed`)
 
 Roles:
+
 - `staff` / `admin` → Create loans, approve
 - `field_officer` / `admin` → Disburse
 - `investor` / `admin` → Add investments
 - `admin` → All operations
 
 **Dev Credentials** (application.properties):
+
 ```
 staff:staff123
 investor:investor123
@@ -317,11 +335,13 @@ admin:admin123
 ## 🚀 Running the Application
 
 ### Prerequisites
+
 - Java 25+
 - MySQL 8.0+
 - Docker (optional, for local MySQL via Testcontainers in tests)
 
 ### Development Mode
+
 ```bash
 # Start in dev mode (auto-reload, H2 in-memory DB for testing)
 ./gradlew quarkusDev
@@ -334,6 +354,7 @@ admin:admin123
 ```
 
 ### Build & Run
+
 ```bash
 # Build production JAR
 ./gradlew build -DskipTests
@@ -343,6 +364,7 @@ java -jar build/quarkus-app/quarkus-run.jar
 ```
 
 ### Database Setup
+
 ```bash
 # Flyway auto-migrates schema on startup
 # Migration file: src/main/resources/db/migration/V1__init.sql
@@ -358,6 +380,7 @@ USE amartha_loans;
 ## 🧪 Testing
 
 ### Unit & Integration Tests
+
 ```bash
 # Run all tests
 ./gradlew test
@@ -367,12 +390,14 @@ USE amartha_loans;
 ```
 
 **Test Stack:**
+
 - `@QuarkusTest` for integration testing
 - `REST-Assured` for API testing
 - `H2` in-memory database for test isolation
 - `Mockito` for mocking dependencies
 
 ### Key Test Cases
+
 - Loan creation with validation
 - State transitions (PROPOSED → APPROVED → INVESTED → DISBURSED)
 - Investment amount validation (cannot exceed principal)
@@ -386,20 +411,22 @@ USE amartha_loans;
 
 ## 🛠️ Technology Stack
 
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| **Framework** | Quarkus | 3.34.2 |
-| **Java** | OpenJDK | 25+ |
-| **Build Tool** | Gradle | 8.x |
-| **ORM** | Hibernate Reactive + Panache | 2.x |
-| **Database** | MySQL + H2 (test) | 8.0 / 2.x |
-| **Migration** | Flyway | 9.x |
-| **REST** | RESTEasy Reactive | 3.x |
-| **PDF** | Apache PDFBox | 3.x |
-| **Email** | Quarkus Mailer + Mailpit | Latest |
-| **Validation** | Jakarta Validation | 3.x |
-| **Security** | Quarkus Elytron | 3.x |
-| **Observability** | SmallRye Health | 3.x |
+
+| Component         | Technology                   | Version   |
+| ----------------- | ---------------------------- | --------- |
+| **Framework**     | Quarkus                      | 3.34.2    |
+| **Java**          | OpenJDK                      | 25+       |
+| **Build Tool**    | Gradle                       | 8.x       |
+| **ORM**           | Hibernate Reactive + Panache | 2.x       |
+| **Database**      | MySQL + H2 (test)            | 8.0 / 2.x |
+| **Migration**     | Flyway                       | 9.x       |
+| **REST**          | RESTEasy Reactive            | 3.x       |
+| **PDF**           | Apache PDFBox                | 3.x       |
+| **Email**         | Quarkus Mailer + Mailpit     | Latest    |
+| **Validation**    | Jakarta Validation           | 3.x       |
+| **Security**      | Quarkus Elytron              | 3.x       |
+| **Observability** | SmallRye Health              | 3.x       |
+
 
 ---
 
@@ -471,3 +498,4 @@ curl -X PUT http://localhost:8080/api/v1/loans/{id}/disburse \
 - [RESTEasy Reactive](https://quarkus.io/guides/resteasy-reactive)
 - [Quarkus Mailer](https://quarkus.io/guides/mailer)
 - [Flyway Migrations](https://flywaydb.org/)
+

@@ -9,15 +9,15 @@ public class CreateLoanRequest {
     public Integer borrowerId;
 
     @NotNull(message = "Principal amount is required")
-    @DecimalMin(value = "0.01", message = "Principal amount must be positive")
+    @DecimalMin(value = "10", message = "Principal amount must be positive")
     public BigDecimal principalAmount;
 
     @NotNull(message = "Rate is required")
-    @DecimalMin(value = "0", message = "Rate must be >= 0")
+    @DecimalMin(value = "1", message = "Rate must be >= 0")
     public BigDecimal rate;
 
     @NotNull(message = "ROI is required")
-    @DecimalMin(value = "0", message = "ROI must be >= 0")
+    @DecimalMin(value = "1", message = "ROI must be >= 0")
     public BigDecimal roi;
 
     public CreateLoanRequest() {

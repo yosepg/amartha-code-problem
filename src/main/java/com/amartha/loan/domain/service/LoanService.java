@@ -16,12 +16,13 @@ import jakarta.transaction.Transactional;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
-import lombok.extern.jbosslog.JBossLog;
+import lombok.extern.slf4j.Slf4j;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 
 @ApplicationScoped
-@JbossLog
+@Slf4j
 public class LoanService {
 
     @Inject
@@ -68,73 +69,138 @@ public class LoanService {
     public Uni<LoanResponse> getLoanDetailsReactive(Long loanId) {
         return loanRepository.findByIdReactive(loanId)
                 .onItem().ifNull().failWith(new LoanNotFoundException(loanId.toString()))
-                .flatMap(loan -> 
-                    Uni.combine().all()
-                        .unis(
-                            loanInvestmentRepository.sumAmountByLoanIdReactive(loanId),
-                            loanApprovalRepository.findByLoanIdReactive(loanId),
-                            loanDisbursementRepository.findByLoanIdReactive(loanId)
-                        )
-                        .with((totalInvested, approval, disbursement) -> 
-                            toLoanResponse(loan, totalInvested, approval.orElse(null), disbursement.orElse(null))
-                        )
+                .chain(loan ->
+                    loanInvestmentRepository.sumAmountByLoanIdReactive(loanId)
+                            .chain(totalInvested ->
+                                loanApprovalRepository.findByLoanIdReactive(loanId)
+                                        .chain(approval ->
+                                            loanDisbursementRepository.findByLoanIdReactive(loanId)
+                                                    .map(disbursement ->
+                                                        toLoanResponse(loan, totalInvested, approval.orElse(null), disbursement.orElse(null))
+                                                    )
+                                        )
+                            )
                 );
     }
 
+    private List<Loan> listLoans(LoanStatus status) {
+        if (status != null) {
+            log.info("Listing loans with status: {}", status);
+            return loanRepository.findByStatus(status);
+        }
+        log.info("Listing all loans");
+        return loanRepository.getAll();
+    }
+
+    private Uni<List<Loan>> listLoansReactive(LoanStatus status) {
+        if (status != null) {
+            log.info("Listing loans with status: {}", status);
+            return loanRepository.findByStatusReactive(status);
+        }
+        log.info("Listing all loans");
+        return loanRepository.getAllReactive();
+    }
+
     @WithTransaction
-    public Uni<List<LoanResponse>> listLoansWithDetailsReactive(LoanStatus status) {
+    public Uni<List<LoanResponse>> listLoansWithDetails(LoanStatus status) {
         return listLoansReactive(status)
-                .flatMap(loans -> {
+                .chain(loans -> {
                     if (loans.isEmpty()) {
                         return Uni.createFrom().item(List.<LoanResponse>of());
                     }
                     
-                    List<Uni<LoanResponse>> loanDetailsUnis = loans.stream()
-                            .map(loan -> 
-                                // For each loan, combine its investment details, approval, and disbursement in parallel
-                                Uni.combine().all()
-                                    .unis(
-                                        loanInvestmentRepository.sumAmountByLoanIdReactive(loan.id),
-                                        loanApprovalRepository.findByLoanIdReactive(loan.id),
-                                        loanDisbursementRepository.findByLoanIdReactive(loan.id)
-                                    )
-                                    .with((totalInvested, approval, disbursement) -> 
-                                        toLoanResponse(loan, totalInvested, approval.orElse(null), disbursement.orElse(null))
-                                    )
-                            )
-                            .toList();
+                    Uni<List<LoanResponse>> result = Uni.createFrom().item(new ArrayList<LoanResponse>());
                     
-                    // Combine all loan response Uni objects and return as List
-                    return (Uni<List<LoanResponse>>) (Uni<?>) Uni.combine().all().unis(loanDetailsUnis).with(responses -> responses);
+                    for (Loan loan : loans) {
+                        result = result.chain(list ->
+                            loanInvestmentRepository.sumAmountByLoanIdReactive(loan.id)
+                                    .chain(totalInvested ->
+                                        loanApprovalRepository.findByLoanIdReactive(loan.id)
+                                                .chain(approval ->
+                                                    loanDisbursementRepository.findByLoanIdReactive(loan.id)
+                                                            .map(disbursement -> {
+                                                                list.add(toLoanResponse(loan, totalInvested, approval.orElse(null), disbursement.orElse(null)));
+                                                                return list;
+                                                            })
+                                                )
+                                    )
+                        );
+                    }
+                    
+                    return result;
                 });
     }
 
     @WithTransaction
-    public Uni<LoanResponse> approveLoanAndFetchDetails(Long loanId, Integer employeeId, String photoProofPath, LocalDate approvalDate) throws IOException {
-        Loan loan = approveLoan(loanId, employeeId, photoProofPath, approvalDate);
-
-        return Uni.combine().all()
-                .unis(
-                    loanInvestmentRepository.sumAmountByLoanIdReactive(loanId),
-                    loanApprovalRepository.findByLoanIdReactive(loanId)
-                )
-                .with((totalInvested, approval) ->
-                    toLoanResponse(loan, totalInvested, approval.orElse(null), null)
-                );
+    public Uni<LoanResponse> approveLoanAndFetchDetails(Long loanId, Integer employeeId, String photoProofPath, LocalDate approvalDate) {
+        return loanRepository.findByIdReactive(loanId)
+                .onItem().ifNull().failWith(new LoanNotFoundException(loanId.toString()))
+                .chain(loan -> {
+                    loanStateValidator.validateTransitionToApproved(loan.status);
+                    
+                    loan.status = LoanStatus.APPROVED;
+                    
+                    try {
+                        String agreementLetterPath = agreementLetterGenerator.generateAgreementLetter(loanId.toString(), loan.borrowerId.toString(), loan.principalAmount.toString());
+                        loan.agreementLetterUrl = agreementLetterPath;
+                    } catch (IOException e) {
+                        return Uni.createFrom().failure(e);
+                    }
+                    
+                    return loanRepository.persist(loan)
+                            .chain(v -> {
+                                LoanApproval approval = new LoanApproval();
+                                approval.loanId = loanId;
+                                approval.fieldValidatorEmployeeId = employeeId;
+                                approval.fieldValidatorPhotoProofPath = photoProofPath;
+                                approval.approvalDate = approvalDate;
+                                
+                                return loanApprovalRepository.persist(approval)
+                                        .chain(v2 ->
+                                            loanInvestmentRepository.sumAmountByLoanIdReactive(loanId)
+                                                    .chain(totalInvested ->
+                                                        loanApprovalRepository.findByLoanIdReactive(loanId)
+                                                                .map(approvalOpt ->
+                                                                    toLoanResponse(loan, totalInvested, approvalOpt.orElse(null), null)
+                                                                )
+                                                    )
+                                        );
+                            });
+                });
     }
 
     @WithTransaction
     public Uni<LoanResponse> disburseLoanAndFetchDetails(Long loanId, Integer employeeId, String signedAgreementPath, LocalDate disbursementDate) {
-        Loan loan = disburseLoan(loanId, employeeId, signedAgreementPath, disbursementDate);
-
-        return Uni.combine().all()
-                .unis(
-                    loanInvestmentRepository.sumAmountByLoanIdReactive(loanId),
-                    loanDisbursementRepository.findByLoanIdReactive(loanId)
-                )
-                .with((totalInvested, disbursement) ->
-                    toLoanResponse(loan, totalInvested, null, disbursement.orElse(null))
-                );
+        return loanRepository.findByIdReactive(loanId)
+                .onItem().ifNull().failWith(new LoanNotFoundException(loanId.toString()))
+                .chain(loan -> {
+                    loanStateValidator.validateTransitionToDisbursed(loan.status);
+                    
+                    loan.status = LoanStatus.DISBURSED;
+                    
+                    return loanRepository.persist(loan)
+                            .chain(v -> {
+                                LoanDisbursement disbursement = new LoanDisbursement();
+                                disbursement.loanId = loanId;
+                                disbursement.fieldOfficerEmployeeId = employeeId;
+                                disbursement.signedAgreementLetterPath = signedAgreementPath;
+                                disbursement.disbursementDate = disbursementDate;
+                                
+                                return loanDisbursementRepository.persist(disbursement)
+                                        .chain(v2 ->
+                                            loanInvestmentRepository.sumAmountByLoanIdReactive(loanId)
+                                                    .chain(totalInvested ->
+                                                        loanApprovalRepository.findByLoanIdReactive(loanId)
+                                                                .chain(approval ->
+                                                                    loanDisbursementRepository.findByLoanIdReactive(loanId)
+                                                                            .map(disbursementOpt ->
+                                                                                toLoanResponse(loan, totalInvested, approval.orElse(null), disbursementOpt.orElse(null))
+                                                                            )
+                                                                )
+                                                    )
+                                        );
+                            });
+                });
     }
 
     private LoanResponse toLoanResponse(Loan loan, BigDecimal totalInvested, LoanApproval approval, LoanDisbursement disbursement) {
@@ -166,16 +232,7 @@ public class LoanService {
     }
 
 
-    public Uni<List<Loan>> listLoansReactive(LoanStatus status) {
-        if (status != null) {
-            log.info("Listing loans with status: {}", status);
-            return loanRepository.findByStatusReactive(status);
-        }
-        log.info("Listing all loans");
-        return loanRepository.getAllReactive();
-    }
-
-    @Transactional
+    
     public Loan approveLoan(Long loanId, Integer employeeId, String photoProofPath, LocalDate approvalDate) throws IOException {
         Loan loan = getLoan(loanId);
         loanStateValidator.validateTransitionToApproved(loan.status);
@@ -196,6 +253,7 @@ public class LoanService {
     }
 
     @Transactional
+    // deprecated
     public Loan addInvestment(Long loanId, Integer investorId, BigDecimal amount) {
         Loan loan = getLoan(loanId);
 
@@ -228,8 +286,57 @@ public class LoanService {
         return loan;
     }
 
+    @WithTransaction
+    public Uni<LoanInvestment> addInvestmentReactive(Long loanId, Integer investorId, BigDecimal amount) {
+        return loanRepository.findByIdReactive(loanId)
+                .onItem().ifNull().failWith(new LoanNotFoundException(loanId.toString()))
+                .chain(loan -> {
+                    loanStateValidator.validateTransitionToInvested(loan.status);
+                    
+                    return loanInvestmentRepository.sumAmountByLoanIdReactive(loanId)
+                            .chain(totalInvested -> {
+                                loanStateValidator.validateInvestmentAmount(loan.principalAmount, totalInvested, amount);
+                                
+                                LoanInvestment investment = new LoanInvestment();
+                                investment.loanId = loanId;
+                                investment.investorId = investorId;
+                                investment.amount = amount;
+                                
+                                return loanInvestmentRepository.persist(investment)
+                                        .chain(v -> {
+                                            BigDecimal newTotal = totalInvested.add(amount);
+                                            
+                                            if (newTotal.compareTo(loan.principalAmount) == 0) {
+                                                loan.status = LoanStatus.INVESTED;
+                                                
+                                                return loanRepository.persist(loan)
+                                                        .chain(v2 ->
+                                                            loanInvestmentRepository.findByLoanIdReactive(loanId)
+                                                                    .map(investments -> {
+                                                                        List<Integer> investorIds = investments.stream()
+                                                                                .map(inv -> inv.investorId)
+                                                                                .distinct()
+                                                                                .toList();
+                                                                        
+                                                                        loanFullyFundedEvent.fire(new LoanFullyFundedEvent(loanId, loan.borrowerId, investorIds));
+                                                                        return investment;
+                                                                    })
+                                                        );
+                                            }
+                                            
+                                            return Uni.createFrom().item(investment);
+                                        });
+                            });
+                });
+    }
+
     public List<LoanInvestment> getInvestments(Long loanId) {
         return loanInvestmentRepository.findByLoanId(loanId);
+    }
+
+    @WithTransaction
+    public Uni<List<LoanInvestment>> getInvestmentsReactive(Long loanId) {
+        return loanInvestmentRepository.findByLoanIdReactive(loanId);
     }
 
     @Transactional

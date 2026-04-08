@@ -24,8 +24,11 @@ dependencies {
     implementation 'io.quarkus:quarkus-smallrye-health'
     implementation 'io.quarkus:quarkus-flyway'
     implementation 'io.quarkus:quarkus-elytron-security-properties-file'
-    compileOnly 'org.projectlombok:lombok:1.18.30'
-    annotationProcessor 'org.projectlombok:lombok:1.18.30'
+    implementation 'org.jboss.logging:jboss-logging'
+    compileOnly 'org.projectlombok:lombok:1.18.38'
+
+    annotationProcessor 'org.projectlombok:lombok:1.18.38'
+    testAnnotationProcessor 'org.projectlombok:lombok:1.18.38'
     testImplementation 'io.quarkus:quarkus-junit5'
     testImplementation 'io.rest-assured:rest-assured'
 }

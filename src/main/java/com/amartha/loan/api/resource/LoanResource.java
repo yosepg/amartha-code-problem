@@ -95,7 +95,7 @@ public class LoanResource {
     @Operation(summary = "List loans")
     public Uni<List<LoanResponse>> listLoans(@QueryParam("status") String status) {
         LoanStatus loanStatus = status != null ? LoanStatus.valueOf(status) : null;
-        return loanService.listLoansWithDetailsReactive(loanStatus);
+        return loanService.listLoansWithDetails(loanStatus);
     }
 
     @PUT

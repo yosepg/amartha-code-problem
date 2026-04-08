@@ -29,16 +29,13 @@ public class LoanInvestmentRepository implements PanacheRepository<LoanInvestmen
     }
 
     public Uni<BigDecimal> sumAmountByLoanIdReactive(Long loanId) {
-        return find("SELECT COALESCE(SUM(li.amount), 0) FROM LoanInvestment li WHERE li.loanId = ?1", loanId)
-                .singleResult()
-                .map(result -> {
-                    Object resultObj = result;
-                    if (resultObj == null) {
-                        return BigDecimal.ZERO;
-                    }
-                    // Hibernate returns BigDecimal for SUM queries
-                    return (BigDecimal) resultObj;
-                });
+        return getSession()
+                .chain(session ->
+                    session.createQuery("SELECT COALESCE(SUM(li.amount), 0) FROM LoanInvestment li WHERE li.loanId = :loanId", BigDecimal.class)
+                            .setParameter("loanId", loanId)
+                            .getSingleResult()
+                            .map(result -> result != null ? result : BigDecimal.ZERO)
+                );
     }
 
     public long countByLoanId(Long loanId) {
