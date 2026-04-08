@@ -48,14 +48,16 @@ public class LoanResource {
     @POST
     @RolesAllowed({"staff", "admin"})
     @Operation(summary = "Create a new loan")
-    public Response createLoan(@Valid CreateLoanRequest request) {
-        Loan loan = loanService.createLoan(
+    public Uni<Response> createLoan(@Valid CreateLoanRequest request) {
+        return loanService.createLoanReactive(
                 request.borrowerId,
                 request.principalAmount,
                 request.rate,
-                request.roi);
-        LoanResponse response = toLoanResponse(loan, BigDecimal.ZERO, null, null);
-        return Response.status(Response.Status.CREATED).entity(response).build();
+                request.roi)
+                .map(loan -> {
+                    LoanResponse response = toLoanResponse(loan, BigDecimal.ZERO, null, null);
+                    return Response.status(Response.Status.CREATED).entity(response).build();
+                });
     }
 
     @GET

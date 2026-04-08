@@ -39,7 +39,7 @@ CREATE TABLE borrower_profiles (
     business_category VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT fk_borrower_member FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
+--    CONSTRAINT fk_borrower_member FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
     INDEX idx_credit_score (credit_score),
     INDEX idx_business_category (business_category)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -53,7 +53,7 @@ CREATE TABLE investor_profiles (
     total_balance DECIMAL(19, 2) DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT fk_investor_member FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
+--    CONSTRAINT fk_investor_member FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
     INDEX idx_risk_score (risk_appetite_score),
     INDEX idx_total_balance (total_balance)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -69,7 +69,7 @@ CREATE TABLE loans (
     agreement_letter_url VARCHAR(512),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT fk_loan_borrower FOREIGN KEY (borrower_id) REFERENCES members(id) ON DELETE RESTRICT,
+--    CONSTRAINT fk_loan_borrower FOREIGN KEY (borrower_id) REFERENCES members(id) ON DELETE RESTRICT,
     CONSTRAINT chk_principal_positive CHECK (principal_amount > 0),
     CONSTRAINT chk_rate_valid CHECK (rate >= 0),
     CONSTRAINT chk_roi_valid CHECK (roi >= 0),
@@ -86,8 +86,8 @@ CREATE TABLE loan_approvals (
     field_validator_photo_proof_path VARCHAR(512),
     approval_date DATE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_loan_approval FOREIGN KEY (loan_id) REFERENCES loans(id) ON DELETE CASCADE,
-    CONSTRAINT fk_approval_employee FOREIGN KEY (field_validator_employee_id) REFERENCES employees(id) ON DELETE RESTRICT,
+ --   CONSTRAINT fk_loan_approval FOREIGN KEY (loan_id) REFERENCES loans(id) ON DELETE CASCADE,
+ --   CONSTRAINT fk_approval_employee FOREIGN KEY (field_validator_employee_id) REFERENCES employees(id) ON DELETE RESTRICT,
     INDEX idx_employee_id (field_validator_employee_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -98,8 +98,8 @@ CREATE TABLE loan_investments (
     investor_id INT NOT NULL,
     amount DECIMAL(19, 2) NOT NULL,
     invested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_loan_investment FOREIGN KEY (loan_id) REFERENCES loans(id) ON DELETE CASCADE,
-    CONSTRAINT fk_investment_investor FOREIGN KEY (investor_id) REFERENCES members(id) ON DELETE RESTRICT,
+ --   CONSTRAINT fk_loan_investment FOREIGN KEY (loan_id) REFERENCES loans(id) ON DELETE CASCADE,
+ --   CONSTRAINT fk_investment_investor FOREIGN KEY (investor_id) REFERENCES members(id) ON DELETE RESTRICT,
     CONSTRAINT chk_investment_positive CHECK (amount > 0),
     INDEX idx_loan_id (loan_id),
     INDEX idx_investor_id (investor_id),

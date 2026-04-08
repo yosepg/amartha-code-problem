@@ -7,6 +7,7 @@ import com.amartha.loan.domain.repository.*;
 import com.amartha.loan.domain.validator.LoanStateValidator;
 import com.amartha.loan.domain.exception.LoanNotFoundException;
 import com.amartha.loan.infrastructure.pdf.AgreementLetterGenerator;
+import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Event;
@@ -42,16 +43,15 @@ public class LoanService {
     @Inject
     AgreementLetterGenerator agreementLetterGenerator;
 
-    @Transactional
-    public Loan createLoan(Integer borrowerId, BigDecimal principalAmount, BigDecimal rate, BigDecimal roi) {
+    @WithTransaction
+    public Uni<Loan> createLoanReactive(Integer borrowerId, BigDecimal principalAmount, BigDecimal rate, BigDecimal roi) {
         Loan loan = new Loan();
         loan.borrowerId = borrowerId;
         loan.principalAmount = principalAmount;
         loan.rate = rate;
         loan.roi = roi;
         loan.status = LoanStatus.PROPOSED;
-        loanRepository.persist(loan);
-        return loan;
+        return loanRepository.persist(loan).map(v -> loan);
     }
 
     public Loan getLoan(Long loanId) {
@@ -62,7 +62,7 @@ public class LoanService {
         return loan;
     }
 
-    @Transactional
+    @WithTransaction
     public Uni<LoanResponse> getLoanDetailsReactive(Long loanId) {
         return loanRepository.findByIdReactive(loanId)
                 .onItem().ifNull().failWith(new LoanNotFoundException(loanId.toString()))
@@ -79,24 +79,35 @@ public class LoanService {
                 );
     }
 
-    @Transactional
+    @WithTransaction
     public Uni<List<LoanResponse>> listLoansWithDetailsReactive(LoanStatus status) {
-        return Uni.createFrom().item(() -> {
-            LoanStatus loanStatus = status;
-            List<Loan> loans = loanStatus != null ? listLoans(loanStatus) : listLoans(null);
-            
-            return loans.stream()
-                    .map(loan -> {
-                        BigDecimal totalInvested = loanInvestmentRepository.sumAmountByLoanId(loan.id);
-                        var approval = loanApprovalRepository.findByLoanId(loan.id);
-                        var disbursement = loanDisbursementRepository.findByLoanId(loan.id);
-                        return toLoanResponse(loan, totalInvested, approval.orElse(null), disbursement.orElse(null));
-                    })
-                    .toList();
-        });
+        return listLoansReactive(status)
+                .flatMap(loans -> {
+                    if (loans.isEmpty()) {
+                        return Uni.createFrom().item(List.<LoanResponse>of());
+                    }
+                    
+                    List<Uni<LoanResponse>> loanDetailsUnis = loans.stream()
+                            .map(loan -> 
+                                // For each loan, combine its investment details, approval, and disbursement in parallel
+                                Uni.combine().all()
+                                    .unis(
+                                        loanInvestmentRepository.sumAmountByLoanIdReactive(loan.id),
+                                        loanApprovalRepository.findByLoanIdReactive(loan.id),
+                                        loanDisbursementRepository.findByLoanIdReactive(loan.id)
+                                    )
+                                    .with((totalInvested, approval, disbursement) -> 
+                                        toLoanResponse(loan, totalInvested, approval.orElse(null), disbursement.orElse(null))
+                                    )
+                            )
+                            .toList();
+                    
+                    // Combine all loan response Uni objects and return as List
+                    return (Uni<List<LoanResponse>>) (Uni<?>) Uni.combine().all().unis(loanDetailsUnis).with(responses -> responses);
+                });
     }
 
-    @Transactional
+    @WithTransaction
     public Uni<LoanResponse> approveLoanAndFetchDetails(Long loanId, Integer employeeId, String photoProofPath, LocalDate approvalDate) throws IOException {
         Loan loan = approveLoan(loanId, employeeId, photoProofPath, approvalDate);
 
@@ -110,7 +121,7 @@ public class LoanService {
                 );
     }
 
-    @Transactional
+    @WithTransaction
     public Uni<LoanResponse> disburseLoanAndFetchDetails(Long loanId, Integer employeeId, String signedAgreementPath, LocalDate disbursementDate) {
         Loan loan = disburseLoan(loanId, employeeId, signedAgreementPath, disbursementDate);
 
@@ -152,11 +163,11 @@ public class LoanService {
         return response;
     }
 
-    public List<Loan> listLoans(LoanStatus status) {
+    public Uni<List<Loan>> listLoansReactive(LoanStatus status) {
         if (status != null) {
-            return loanRepository.findByStatus(status);
+            return loanRepository.findByStatusReactive(status);
         }
-        return loanRepository.getAll();
+        return loanRepository.getAllReactive();
     }
 
     @Transactional
