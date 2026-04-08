@@ -4,31 +4,27 @@ import com.amartha.loan.domain.model.LoanStatus;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-public class LoanResponse {
+public record LoanResponse(
+    Long id,
+    Integer borrowerId,
+    BigDecimal principalAmount,
+    BigDecimal rate,
+    BigDecimal roi,
+    LoanStatus status,
+    BigDecimal totalInvested,
+    BigDecimal remainingAmount,
+    String agreementLetterUrl,
+    ApprovalInfo approval,
+    DisbursementInfo disbursement,
+    LocalDateTime createdAt
+) {
+    public record ApprovalInfo(
+        Integer fieldValidatorEmployeeId,
+        String approvalDate
+    ) {}
 
-    public Long id;
-    public Integer borrowerId;
-    public BigDecimal principalAmount;
-    public BigDecimal rate;
-    public BigDecimal roi;
-    public LoanStatus status;
-    public BigDecimal totalInvested;
-    public BigDecimal remainingAmount;
-    public String agreementLetterUrl;
-    public ApprovalInfo approval;
-    public DisbursementInfo disbursement;
-    public LocalDateTime createdAt;
-
-    public static class ApprovalInfo {
-        public Integer fieldValidatorEmployeeId;
-        public String approvalDate;
-    }
-
-    public static class DisbursementInfo {
-        public Integer fieldOfficerEmployeeId;
-        public String disbursementDate;
-    }
-
-    public LoanResponse() {
-    }
+    public record DisbursementInfo(
+        Integer fieldOfficerEmployeeId,
+        String disbursementDate
+    ) {}
 }

@@ -30,9 +30,9 @@ public class LoanInvestmentResource {
     @Operation(summary = "Add investment to loan")
     public Uni<InvestmentResponse> addInvestment(@Valid AddInvestmentRequest request) {
         return loanService.addInvestmentReactive(
-                request.loanId,
-                request.investorId,
-                request.amount)
+                request.loanId(),
+                request.investorId(),
+                request.amount())
                 .map(this::toInvestmentResponse);
     }
 
@@ -50,12 +50,12 @@ public class LoanInvestmentResource {
     }
 
     private InvestmentResponse toInvestmentResponse(LoanInvestment investment) {
-        InvestmentResponse response = new InvestmentResponse();
-        response.id = investment.id;
-        response.loanId = investment.loanId;
-        response.investorId = investment.investorId;
-        response.amount = investment.amount;
-        response.investedAt = investment.investedAt;
-        return response;
+        return new InvestmentResponse(
+            investment.id,
+            investment.loanId,
+            investment.investorId,
+            investment.amount,
+            investment.investedAt
+        );
     }
 }

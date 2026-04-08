@@ -393,7 +393,6 @@ USE amartha_loans;
 
 - `@QuarkusTest` for integration testing
 - `REST-Assured` for API testing
-- `H2` in-memory database for test isolation
 - `Mockito` for mocking dependencies
 
 ### Key Test Cases
@@ -427,18 +426,6 @@ USE amartha_loans;
 | **Security**      | Quarkus Elytron              | 3.x       |
 | **Observability** | SmallRye Health              | 3.x       |
 
-
----
-
-## 📚 Key Design Decisions
-
-1. **Reactive Panache** → Non-blocking I/O for scalability
-2. **Event-Driven** → Decouples approval/investment from email notifications
-3. **State Machine** → Enforces valid loan transitions; prevents invalid operations
-4. **DTO Layer** → API contracts independent of entity model
-5. **Global Exception Mapper** → Consistent error responses (404, 409, 422, 500)
-6. **Injected Generators** → PDF and email services as beans for testability
-7. **Flyway Migrations** → Version-controlled schema evolution
 
 ---
 
@@ -482,12 +469,11 @@ curl -X PUT http://localhost:8080/api/v1/loans/{id}/disburse \
 
 ## 📝 Assumptions & Notes
 
-1. **File Storage:** Agreement letters and documents stored locally at `/tmp/amartha-loans/`. For production, integrate with cloud storage (S3, GCS).
+1. **File Storage:** Agreement letters and documents stored locally at `/tmp/amartha-loans/`. For production, using with cloud storage (S3, GCS).
 2. **Email Service:** Uses Quarkus Mailer with Mailpit for dev. Configure SMTP in production (`application-prod.properties`).
-3. **Borrower/Investor Identity:** Represented as string IDs. In production, integrate with user/identity service (OIDC, JWT).
+3. **Borrower/Investor Identity:** Represented as string IDs.
 4. **Photo Proof & Signed Agreement:** Opaque string paths provided by client. In production, implement file upload/validation.
-5. **Concurrency:** Panache reactive guarantees row-level consistency; no distributed locking needed.
-6. **Audit Trail:** Basic timestamps (`createdAt`, `updatedAt`). For full audit, add audit tables/events.
+5. **Audit Trail:** Basic timestamps (`createdAt`, `updatedAt`). For full audit, add audit tables/events.
 
 ---
 

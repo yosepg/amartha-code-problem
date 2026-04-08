@@ -204,31 +204,38 @@ public class LoanService {
     }
 
     private LoanResponse toLoanResponse(Loan loan, BigDecimal totalInvested, LoanApproval approval, LoanDisbursement disbursement) {
-        LoanResponse response = new LoanResponse();
-        response.id = loan.id;
-        response.borrowerId = loan.borrowerId;
-        response.principalAmount = loan.principalAmount;
-        response.rate = loan.rate;
-        response.roi = loan.roi;
-        response.status = loan.status;
-        response.agreementLetterUrl = loan.agreementLetterUrl;
-        response.createdAt = loan.createdAt;
-        response.totalInvested = totalInvested != null ? totalInvested : BigDecimal.ZERO;
-        response.remainingAmount = loan.principalAmount.subtract(response.totalInvested);
-
+        BigDecimal invested = totalInvested != null ? totalInvested : BigDecimal.ZERO;
+        
+        LoanResponse.ApprovalInfo approvalInfo = null;
         if (approval != null) {
-            response.approval = new LoanResponse.ApprovalInfo();
-            response.approval.fieldValidatorEmployeeId = approval.fieldValidatorEmployeeId;
-            response.approval.approvalDate = approval.approvalDate.toString();
+            approvalInfo = new LoanResponse.ApprovalInfo(
+                approval.fieldValidatorEmployeeId,
+                approval.approvalDate.toString()
+            );
         }
 
+        LoanResponse.DisbursementInfo disbursementInfo = null;
         if (disbursement != null) {
-            response.disbursement = new LoanResponse.DisbursementInfo();
-            response.disbursement.fieldOfficerEmployeeId = disbursement.fieldOfficerEmployeeId;
-            response.disbursement.disbursementDate = disbursement.disbursementDate.toString();
+            disbursementInfo = new LoanResponse.DisbursementInfo(
+                disbursement.fieldOfficerEmployeeId,
+                disbursement.disbursementDate.toString()
+            );
         }
 
-        return response;
+        return new LoanResponse(
+            loan.id,
+            loan.borrowerId,
+            loan.principalAmount,
+            loan.rate,
+            loan.roi,
+            loan.status,
+            invested,
+            loan.principalAmount.subtract(invested),
+            loan.agreementLetterUrl,
+            approvalInfo,
+            disbursementInfo,
+            loan.createdAt
+        );
     }
 
 
