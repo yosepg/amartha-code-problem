@@ -1,11 +1,13 @@
 package com.amartha.loan.domain.service;
 
+import com.amartha.loan.api.dto.response.LoanResponse;
 import com.amartha.loan.domain.event.LoanFullyFundedEvent;
 import com.amartha.loan.domain.model.*;
 import com.amartha.loan.domain.repository.*;
 import com.amartha.loan.domain.validator.LoanStateValidator;
 import com.amartha.loan.domain.exception.LoanNotFoundException;
 import com.amartha.loan.infrastructure.pdf.AgreementLetterGenerator;
+import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Event;
 import jakarta.inject.Inject;
@@ -58,6 +60,96 @@ public class LoanService {
             throw new LoanNotFoundException(loanId.toString());
         }
         return loan;
+    }
+
+    @Transactional
+    public Uni<LoanResponse> getLoanDetailsReactive(Long loanId) {
+        return loanRepository.findByIdReactive(loanId)
+                .onItem().ifNull().failWith(new LoanNotFoundException(loanId.toString()))
+                .flatMap(loan -> 
+                    Uni.combine().all()
+                        .unis(
+                            loanInvestmentRepository.sumAmountByLoanIdReactive(loanId),
+                            loanApprovalRepository.findByLoanIdReactive(loanId),
+                            loanDisbursementRepository.findByLoanIdReactive(loanId)
+                        )
+                        .with((totalInvested, approval, disbursement) -> 
+                            toLoanResponse(loan, totalInvested, approval.orElse(null), disbursement.orElse(null))
+                        )
+                );
+    }
+
+    @Transactional
+    public Uni<List<LoanResponse>> listLoansWithDetailsReactive(LoanStatus status) {
+        return Uni.createFrom().item(() -> {
+            LoanStatus loanStatus = status;
+            List<Loan> loans = loanStatus != null ? listLoans(loanStatus) : listLoans(null);
+            
+            return loans.stream()
+                    .map(loan -> {
+                        BigDecimal totalInvested = loanInvestmentRepository.sumAmountByLoanId(loan.id);
+                        var approval = loanApprovalRepository.findByLoanId(loan.id);
+                        var disbursement = loanDisbursementRepository.findByLoanId(loan.id);
+                        return toLoanResponse(loan, totalInvested, approval.orElse(null), disbursement.orElse(null));
+                    })
+                    .toList();
+        });
+    }
+
+    @Transactional
+    public Uni<LoanResponse> approveLoanAndFetchDetails(Long loanId, Integer employeeId, String photoProofPath, LocalDate approvalDate) throws IOException {
+        Loan loan = approveLoan(loanId, employeeId, photoProofPath, approvalDate);
+
+        return Uni.combine().all()
+                .unis(
+                    loanInvestmentRepository.sumAmountByLoanIdReactive(loanId),
+                    loanApprovalRepository.findByLoanIdReactive(loanId)
+                )
+                .with((totalInvested, approval) ->
+                    toLoanResponse(loan, totalInvested, approval.orElse(null), null)
+                );
+    }
+
+    @Transactional
+    public Uni<LoanResponse> disburseLoanAndFetchDetails(Long loanId, Integer employeeId, String signedAgreementPath, LocalDate disbursementDate) {
+        Loan loan = disburseLoan(loanId, employeeId, signedAgreementPath, disbursementDate);
+
+        return Uni.combine().all()
+                .unis(
+                    loanInvestmentRepository.sumAmountByLoanIdReactive(loanId),
+                    loanDisbursementRepository.findByLoanIdReactive(loanId)
+                )
+                .with((totalInvested, disbursement) ->
+                    toLoanResponse(loan, totalInvested, null, disbursement.orElse(null))
+                );
+    }
+
+    private LoanResponse toLoanResponse(Loan loan, BigDecimal totalInvested, LoanApproval approval, LoanDisbursement disbursement) {
+        LoanResponse response = new LoanResponse();
+        response.id = loan.id;
+        response.borrowerId = loan.borrowerId;
+        response.principalAmount = loan.principalAmount;
+        response.rate = loan.rate;
+        response.roi = loan.roi;
+        response.status = loan.status;
+        response.agreementLetterUrl = loan.agreementLetterUrl;
+        response.createdAt = loan.createdAt;
+        response.totalInvested = totalInvested != null ? totalInvested : BigDecimal.ZERO;
+        response.remainingAmount = loan.principalAmount.subtract(response.totalInvested);
+
+        if (approval != null) {
+            response.approval = new LoanResponse.ApprovalInfo();
+            response.approval.fieldValidatorEmployeeId = approval.fieldValidatorEmployeeId;
+            response.approval.approvalDate = approval.approvalDate.toString();
+        }
+
+        if (disbursement != null) {
+            response.disbursement = new LoanResponse.DisbursementInfo();
+            response.disbursement.fieldOfficerEmployeeId = disbursement.fieldOfficerEmployeeId;
+            response.disbursement.disbursementDate = disbursement.disbursementDate.toString();
+        }
+
+        return response;
     }
 
     public List<Loan> listLoans(LoanStatus status) {

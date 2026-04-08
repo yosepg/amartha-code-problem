@@ -1,6 +1,5 @@
 package com.amartha.loan.api.resource;
 
-import com.amartha.loan.api.dto.request.AddInvestmentRequest;
 import com.amartha.loan.api.dto.request.ApproveRequest;
 import com.amartha.loan.api.dto.request.CreateLoanRequest;
 import com.amartha.loan.api.dto.request.DisburseRequest;
@@ -14,6 +13,7 @@ import com.amartha.loan.domain.repository.LoanDisbursementRepository;
 import com.amartha.loan.domain.repository.LoanInvestmentRepository;
 import com.amartha.loan.domain.service.LoanService;
 import io.quarkus.security.Authenticated;
+import io.smallrye.mutiny.Uni;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -25,8 +25,6 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import java.io.File;
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.time.LocalDate;
 import java.util.List;
 
 @Path("/api/v1/loans")
@@ -64,12 +62,8 @@ public class LoanResource {
     @Path("/{id}")
     @Authenticated
     @Operation(summary = "Get loan details")
-    public LoanResponse getLoan(@PathParam("id") Long id) {
-        Loan loan = loanService.getLoan(id);
-        BigDecimal totalInvested = loanInvestmentRepository.sumAmountByLoanId(id);
-        var approval = loanApprovalRepository.findByLoanId(id);
-        var disbursement = loanDisbursementRepository.findByLoanId(id);
-        return toLoanResponse(loan, totalInvested, approval.orElse(null), disbursement.orElse(null));
+    public Uni<LoanResponse> getLoan(@PathParam("id") Long id) {
+        return loanService.getLoanDetailsReactive(id);
     }
 
     @GET
@@ -97,42 +91,29 @@ public class LoanResource {
     @GET
     @Authenticated
     @Operation(summary = "List loans")
-    public List<LoanResponse> listLoans(@QueryParam("status") String status) {
+    public Uni<List<LoanResponse>> listLoans(@QueryParam("status") String status) {
         LoanStatus loanStatus = status != null ? LoanStatus.valueOf(status) : null;
-        return loanService.listLoans(loanStatus).stream()
-                .map(loan -> {
-                    BigDecimal totalInvested = loanInvestmentRepository.sumAmountByLoanId(loan.id);
-                    var approval = loanApprovalRepository.findByLoanId(loan.id);
-                    var disbursement = loanDisbursementRepository.findByLoanId(loan.id);
-                    return toLoanResponse(loan, totalInvested, approval.orElse(null), disbursement.orElse(null));
-                })
-                .toList();
+        return loanService.listLoansWithDetailsReactive(loanStatus);
     }
 
     @PUT
     @Path("/{id}/approve")
     @RolesAllowed({"staff", "admin"})
     @Operation(summary = "Approve a loan")
-    public LoanResponse approveLoan(
+    public Uni<LoanResponse> approveLoan(
             @PathParam("id") Long id,
             @Valid ApproveRequest request) throws IOException {
-        Loan loan = loanService.approveLoan(id, request.employeeId, request.photoProofPath, request.approvalDate);
-        var approval = loanApprovalRepository.findByLoanId(id);
-        BigDecimal totalInvested = loanInvestmentRepository.sumAmountByLoanId(id);
-        return toLoanResponse(loan, totalInvested, approval.orElse(null), null);
+        return loanService.approveLoanAndFetchDetails(id, request.employeeId, request.photoProofPath, request.approvalDate);
     }
 
     @PUT
     @Path("/{id}/disburse")
     @RolesAllowed({"field_officer", "admin"})
     @Operation(summary = "Disburse a loan")
-    public LoanResponse disburseLoan(
+    public Uni<LoanResponse> disburseLoan(
             @PathParam("id") Long id,
             @Valid DisburseRequest request) {
-        Loan loan = loanService.disburseLoan(id, request.employeeId, request.signedAgreementLetterPath, request.disbursementDate);
-        var disbursement = loanDisbursementRepository.findByLoanId(id);
-        BigDecimal totalInvested = loanInvestmentRepository.sumAmountByLoanId(id);
-        return toLoanResponse(loan, totalInvested, null, disbursement.orElse(null));
+        return loanService.disburseLoanAndFetchDetails(id, request.employeeId, request.signedAgreementLetterPath, request.disbursementDate);
     }
 
     private LoanResponse toLoanResponse(Loan loan, BigDecimal totalInvested, LoanApproval approval, LoanDisbursement disbursement) {
