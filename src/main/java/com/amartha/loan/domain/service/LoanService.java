@@ -18,8 +18,10 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
+import lombok.extern.jbosslog.JBossLog;
 
 @ApplicationScoped
+@JbossLog
 public class LoanService {
 
     @Inject
@@ -163,10 +165,13 @@ public class LoanService {
         return response;
     }
 
+
     public Uni<List<Loan>> listLoansReactive(LoanStatus status) {
         if (status != null) {
+            log.info("Listing loans with status: {}", status);
             return loanRepository.findByStatusReactive(status);
         }
+        log.info("Listing all loans");
         return loanRepository.getAllReactive();
     }
 
