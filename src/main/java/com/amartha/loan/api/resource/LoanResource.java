@@ -105,7 +105,7 @@ public class LoanResource {
     public Uni<LoanResponse> approveLoan(
             @PathParam("id") Long id,
             @Valid ApproveRequest request) throws IOException {
-        return loanService.approveLoanAndFetchDetails(id, request.employeeId, request.photoProofPath, request.approvalDate);
+        return loanService.approveLoanAndFetchDetails(id, request.employeeId(), request.photoProofPath(), request.approvalDate());
     }
 
     @PUT
@@ -115,7 +115,7 @@ public class LoanResource {
     public Uni<LoanResponse> disburseLoan(
             @PathParam("id") Long id,
             @Valid DisburseRequest request) {
-        return loanService.disburseLoanAndFetchDetails(id, request.employeeId, request.signedAgreementLetterPath, request.disbursementDate);
+        return loanService.disburseLoanAndFetchDetails(id, request.employeeId(), request.signedAgreementLetterPath(), request.disbursementDate());
     }
 
     private LoanResponse toLoanResponse(Loan loan, BigDecimal totalInvested, LoanApproval approval, LoanDisbursement disbursement) {

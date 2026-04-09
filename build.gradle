@@ -31,6 +31,8 @@ dependencies {
     testAnnotationProcessor 'org.projectlombok:lombok:1.18.38'
     testImplementation 'io.quarkus:quarkus-junit5'
     testImplementation 'io.rest-assured:rest-assured'
+    testImplementation 'org.mockito:mockito-core:5.14.2'
+    testImplementation 'org.mockito:mockito-junit-jupiter:5.14.2'
 }
 
 group = 'com.amartha'
@@ -51,5 +53,6 @@ compileTestJava {
 }
 
 test {
-    enabled = false
+    systemProperty "java.util.logging.manager", "org.jboss.logmanager.LogManager"
+    useJUnitPlatform()
 }
